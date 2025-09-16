@@ -144,9 +144,9 @@ def generatePHPFile(_open_file_name):
 
 
 # サーバ接続情報（固定値）
-user = hpnadmin
-password = YXMxMXEhZmFvKWEqMm5hc3BRfWVFMjFn
-host = 202.177.34.22
+user = "hpnadmin"
+password = "YXMxMXEhZmFvKWEqMm5hc3BRfWVFMjFn"
+host = "202.177.34.22"
 port = 22
 
 
@@ -190,8 +190,9 @@ if zip_file and zip_passwd:
             ]
 
             st.write("📂 アップロード対象ファイル:", local_file_list)
-            success = uploadFilesToServer(user, password, host, port, local_file_list, online_file_list)
-
+            #success = uploadFilesToServer(user, password, host, port, local_file_list, online_file_list)
+            st.write(user, password, host, port, local_file_list, online_file_list)
+            
             if success:
                 st.success("✅ ファイルアップロード成功")
             else:
