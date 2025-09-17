@@ -3,4 +3,5 @@ PyPDF2
 pyzipper
 pdf2image
 Pillow
-streamlit-sortable
+streamlit-sortables
+
