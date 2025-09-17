@@ -86,31 +86,43 @@ if uploaded_zip and zip_password:
                 if "files_confirmed" not in st.session_state:
                     st.session_state.files_confirmed = False
 
-                st.subheader("📁 ファイル順の並べ替え")
-                temp_sorted_files = sort_items(st.session_state.ordered_files)
-                st.session_state.temp_sorted_files = temp_sorted_files
+                # ファイル順並べ替え（未確定時のみ表示）
+                if not st.session_state.files_confirmed:
+                    st.subheader("📁 ファイル順の並べ替え")
+                    temp_sorted_files = sort_items(st.session_state.ordered_files)
+                    st.session_state.temp_sorted_files = temp_sorted_files
 
-                if st.button("✅ ファイル順を確定"):
-                    st.session_state.ordered_files = st.session_state.temp_sorted_files
-                    ordered_pages = []
-                    for fname in st.session_state.ordered_files:
-                        ordered_pages.extend(file_pages[fname])
-                    st.session_state.ordered_pages = ordered_pages
-                    st.session_state.files_confirmed = True
-                    st.rerun()
+                    if st.button("✅ ファイル順を確定"):
+                        st.session_state.ordered_files = st.session_state.temp_sorted_files
+                        ordered_pages = []
+                        for fname in st.session_state.ordered_files:
+                            ordered_pages.extend(file_pages[fname])
+                        st.session_state.ordered_pages = ordered_pages
+                        st.session_state.files_confirmed = True
+                        st.rerun()
 
+                # ページ順並べ替え（ファイルをまたいで）
                 if st.session_state.files_confirmed:
-                    st.subheader("📄 ページ順の並べ替え（ファイルをまたいで）")
-                    labels = [label for label, _, _ in st.session_state.ordered_pages]
-                    sorted_labels = sort_items(labels)
+                    st.subheader("📄 ページ順の並べ替え（サムネイル＋操作）")
+                    new_ordered_pages = st.session_state.ordered_pages.copy()
 
-                    new_ordered_pages = []
-                    for lbl in sorted_labels:
-                        for item in st.session_state.ordered_pages:
-                            if item[0] == lbl:
-                                new_ordered_pages.append(item)
-                                break
-                    st.session_state.ordered_pages = new_ordered_pages
+                    for i, (label, page, img) in enumerate(new_ordered_pages):
+                        col1, col2 = st.columns([5, 1])
+                        with col1:
+                            st.image(img, caption=label, use_container_width=True)
+                        with col2:
+                            if st.button("↑", key=f"up_{label}") and i > 0:
+                                new_ordered_pages[i], new_ordered_pages[i-1] = new_ordered_pages[i-1], new_ordered_pages[i]
+                                st.session_state.ordered_pages = new_ordered_pages
+                                st.rerun()
+                            if st.button("↓", key=f"down_{label}") and i < len(new_ordered_pages)-1:
+                                new_ordered_pages[i], new_ordered_pages[i+1] = new_ordered_pages[i+1], new_ordered_pages[i]
+                                st.session_state.ordered_pages = new_ordered_pages
+                                st.rerun()
+                            if st.button("❌", key=f"del_{label}"):
+                                new_ordered_pages.pop(i)
+                                st.session_state.ordered_pages = new_ordered_pages
+                                st.rerun()
 
                     if st.button("✅ PDFを生成"):
                         try:
