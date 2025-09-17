@@ -1,204 +1,137 @@
 import streamlit as st
-import base64
-import time
-import paramiko
-import pandas as pd
-import datetime
+import pyzipper
+from PyPDF2 import PdfReader, PdfWriter
+from pdf2image import convert_from_bytes
+from streamlit_sortable import sortable
+import zipfile
+import io
+import subprocess
+import tempfile
+import os
 
+st.set_page_config(page_title="PDF結合・圧縮・並び替え", layout="wide")
+st.title("📚 サムネイル付きPDF結合・並び替え・圧縮ツール")
 
-def decryptText(_ciphertext, _rm):
-    """複合化 Copyright © 2023-2024 M.Fukuya
+uploaded_zip = st.file_uploader("🔐 暗号化ZIPファイルをアップロード", type="zip")
+zip_password = st.text_input("ZIPパスワードを入力", type="password")
 
-    Args:
-        _ciphertext (str): 暗号化された文字列
-        _rm (str): 削除文字列
+compression_quality = st.selectbox(
+    "📉 Ghostscript圧縮レベル",
+    ["/screen", "/ebook", "/printer", "/prepress", "圧縮しない"],
+    index=1
+)
 
-    Returns:
-        str: 複合化された文字列
-    """
-    cleartext = base64.b64decode(_ciphertext).decode()[len(_rm):]
-    return cleartext
+compress_output = st.checkbox("📦 ZIPで出力（パスワード付き）")
 
-def uploadFilesToServer(_user, _password, _host, _port, _local_file_path_list, _online_file_path_list):
-    """サーバにファイルをアップロード Copyright © 2023-2024 M.Fukuya
+def compress_pdf_with_ghostscript(input_bytes, quality="/ebook"):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as input_file:
+        input_file.write(input_bytes)
+        input_path = input_file.name
 
-    Args:
-        _user (str): サーバのユーザ名
-        _password (str): サーバのパスワード
-        _host (str): サーバのホスト名(IPアドレス)
-        _port (int): サーバのポート番号
-        _local_file_path_list (list): アップロードするファイルのパスのリスト(ローカル)
-        _online_file_path_list (list): アップロードするファイルのパスのリスト(オンライン)
+    output_path = input_path.replace(".pdf", "_compressed.pdf")
 
-    Returns:
-        bool: 成功時True、失敗時False
-    """
+    gs_cmd = [
+        "gs",
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.4",
+        f"-dPDFSETTINGS={quality}",
+        "-dNOPAUSE",
+        "-dQUIET",
+        "-dBATCH",
+        f"-sOutputFile={output_path}",
+        input_path
+    ]
+
+    subprocess.run(gs_cmd, check=True)
+
+    with open(output_path, "rb") as f:
+        compressed_bytes = f.read()
+
+    os.remove(input_path)
+    os.remove(output_path)
+
+    return compressed_bytes
+
+if uploaded_zip and zip_password:
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname=_host, port=_port, username=_user, password=_password)
+        with pyzipper.AESZipFile(uploaded_zip, 'r') as zf:
+            zf.pwd = zip_password.encode('utf-8')
+            pdf_files = [name for name in zf.namelist() if name.lower().endswith('.pdf')]
 
-        sftp = ssh.open_sftp()
-
-        for j, _local_file_path in enumerate(_local_file_path_list):
-            path_lists = _online_file_path_list[j].split("/")
-            path_lists_len = len(path_lists) - 1
-
-            new_path = ""
-            for i, dir_name in enumerate(path_lists):
-                if i != 0:
-                    new_path = f"{new_path}/{dir_name}"
-                    try:
-                        if i != path_lists_len:
-                            sftp.mkdir(new_path)
-                    except: #folder exist = error
-                        pass
-            try:
-                sftp.put(_local_file_path, _online_file_path_list[j])
-            except:
-                sftp.close()
-                ssh.close()
-
-                time.sleep(10)
-
-                return False
-
-        sftp.close()
-        ssh.close()
-
-        time.sleep(10)
-    except:
-        return False
-
-    return True
-
-def generatePHPFile(_open_file_name):
-    """変電サーバ用HTMLを作成 Copyright © 2023-2024 M.Fukuya
-
-    Args:
-        _open_file_name (str): ＤＸ定点カメラ機器台帳のパス
-
-    Returns:
-        bool: 成功時True
-    """
-    phptext = ""
-    f = open("./template/php1.txt", "r", encoding="UTF-8")
-    phptext = f"{phptext}{f.read()}\n\n"
-    f.close
-
-    df = pd.read_excel(_open_file_name, sheet_name ='common')
-    txt1 = f"{str(df[df['TITLE']=='BRANCH']['VALUE'].values)[2:][:-2]}"
-    phptext = f"{phptext}ほくでんネットワーク　ＤＸ定点カメラシステム（重点監視用ＤＸカメラ）{txt1}\n"
-
-    f = open("./template/php2.txt", "r", encoding="UTF-8")
-    phptext = f"{phptext}{f.read()}\n\n"
-    f.close
-
-    t_delta = datetime.timedelta(hours=9)
-    JST = datetime.timezone(t_delta, 'JST')
-    now = datetime.datetime.now(JST)
-    d = now.strftime('%Y/%m/%d %H:%M')
-
-    phptext = f"{phptext}{d} 作成"
-
-
-    f = open("./template/php3.txt", "r", encoding="UTF-8")
-    phptext = f"{phptext}{f.read()}\n\n"
-    f.close
-
-    i = 0
-    s = ""
-    df = pd.read_excel(_open_file_name, sheet_name ='list')
-    for index, row in df.iterrows():
-        if row['機器種別'].find('RaspPi') == -1:
-            i = i + 1
-            s = s + "<tr>\n"
-            s = s + "<td align=\"center\" class=\"t1\">" + str(i) + "</td>\n"
-            s = s + "<td class=\"t1\">" + row['所属'] + "</td>\n"
-            s = s + "<td class=\"t1\">" + row['電気所'] + "</td>\n"
-            s = s + "<td class=\"t1\">" + row['監視対象'] + "</td>\n"
-            s = s + "<td class=\"t1\">" + row['データ種別'] + "</td>\n"
-            s = s + "<td class=\"t1\"><input type=\"button\" value=\"Push\" onclick=\"location.href='" + row['データ表示／ダウンロードURL'] + "'\"></td>\n"
-            s = s + "</tr>\n\n"
-        else:
-            i = i + 1
-            s = s + "<tr>\n"
-            s = s + "<td align=\"center\" class=\"t1\">" + str(i) + "</td>\n"
-            s = s + "<td class=\"t1\">" + row['所属'] + "</td>\n"
-            s = s + "<td class=\"t1\">" + row['電気所'] + "</td>\n"
-            s = s + "<td class=\"t1\">" + "ＤＸ定点カメラサイト" + "</td>\n"
-            s = s + "<td class=\"t1\">" + "HP" + "</td>\n"
-            s = s + "<td class=\"t1\"><input type=\"button\" value=\"Push\" onclick=\"location.href='" + row['URL'] + "'\"></td>\n"
-            s = s + "</tr>\n\n"
-
-    phptext = f"{phptext}{s}"
-
-    f = open("./template/php4.txt", "r", encoding="UTF-8")
-    phptext = f"{phptext}{f.read()}\n\n"
-    f.close
-
-    f = open(f"./{txt1}.php", "w", encoding="UTF-8")
-    f.write(f"{phptext}")
-    f.close
-    return True
-
-
-
-# サーバ接続情報（固定値）
-user = "hpnadmin"
-password = "YXMxMXEhZmFvKWEqMm5hc3BRfWVFMjFn"
-host = "202.177.34.22"
-port = 22
-
-
-
-st.title("📤 DX定点カメラ機器台帳 ZIPアップロード")
-
-zip_file = st.file_uploader("ZIPファイルを選択", type=["zip"])
-zip_passwd = st.text_input("ZIPパスワード", type="password")
-
-if zip_file and zip_passwd:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-        tmp.write(zip_file.read())
-        zip_path = tmp.name
-
-    flag_unzip = True
-    try:
-        with zipfile.ZipFile(zip_path) as zp:
-            for info in zp.infolist():
-                try:
-                    info.filename = info.filename.encode('cp437').decode('cp932')
-                    zp.extract(info, pwd=zip_passwd.encode("utf-8"))
-                except:
-                    flag_unzip = False
-    except:
-        flag_unzip = False
-
-    os.remove(zip_path)
-
-    if not flag_unzip:
-        st.error("❌ ZIPファイルの解凍に失敗しました。パスワードを確認してください。")
-    else:
-        ledgers = glob.glob("./ＤＸ定点カメラ機器台帳_*.xlsx")
-        for ledger in ledgers:
-            generatePHPFile(ledger)
-
-            php_file_name = os.path.basename(ledger).replace("ＤＸ定点カメラ機器台帳_", "").replace(".xlsx", ".php")
-            local_file_list = [ledger, f"./{php_file_name}"]
-            online_file_list = [
-                f"/home/hpnadmin/public_html/dx_data/Ledger/{os.path.basename(ledger)}",
-                f"/home/hpnadmin/public_html/henden/dx_cam/{php_file_name}"
-            ]
-
-            st.write("📂 アップロード対象ファイル:", local_file_list)
-            #success = uploadFilesToServer(user, password, host, port, local_file_list, online_file_list)
-            st.write(user, password, host, port, local_file_list, online_file_list)
-            
-            if success:
-                st.success("✅ ファイルアップロード成功")
+            if not pdf_files:
+                st.error("ZIP内にPDFファイルが見つかりません。")
             else:
-                st.error("❌ ファイルアップロード失敗")
+                st.subheader("📁 PDFファイルの並び順を指定")
+                ordered_files = sortable("ファイル順", pdf_files)
 
-            for f in local_file_list:
-                os.remove(f)
+                page_pool = []  # [(label, page_obj, image)]
+                for fname in ordered_files:
+                    with zf.open(fname) as pdf_file:
+                        pdf_bytes = pdf_file.read()
+                        reader = PdfReader(io.BytesIO(pdf_bytes))
+                        images = convert_from_bytes(pdf_bytes, dpi=100, fmt='PNG')
+                        for i, page in enumerate(reader.pages):
+                            label = f"{fname} - Page {i+1}"
+                            thumbnail = images[i]
+                            page_pool.append((label, page, thumbnail))
 
+                st.subheader("🧹 結合対象ページを選択（サムネイル付き）")
+                selected_labels = []
+                for label, _, img in page_pool:
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        include = st.checkbox(label, value=True, key=label)
+                    with col2:
+                        st.image(img, caption=label, use_column_width=True)
+                    if include:
+                        selected_labels.append(label)
+
+                st.subheader("📄 ページ順の並び替え")
+                ordered_labels = sortable("ページ順", selected_labels)
+
+                try:
+                    reordered_writer = PdfWriter()
+                    for label in ordered_labels:
+                        page = next(p for l, p, _ in page_pool if l == label)
+                        reordered_writer.add_page(page)
+
+                    pdf_bytes = io.BytesIO()
+                    reordered_writer.write(pdf_bytes)
+                    pdf_bytes.seek(0)
+
+                    original_size_kb = len(pdf_bytes.getvalue()) / 1024
+
+                    if compression_quality != "圧縮しない":
+                        compressed_pdf = compress_pdf_with_ghostscript(pdf_bytes.getvalue(), compression_quality)
+                        final_pdf = compressed_pdf
+                        compressed_size_kb = len(compressed_pdf) / 1024
+                        st.write(f"📊 圧縮前: {original_size_kb:.1f} KB")
+                        st.write(f"📊 圧縮後: {compressed_size_kb:.1f} KB")
+                        st.write(f"📉 削減率: {100 * (1 - compressed_size_kb / original_size_kb):.1f}%")
+                    else:
+                        final_pdf = pdf_bytes.getvalue()
+                        st.write(f"📄 PDFサイズ: {original_size_kb:.1f} KB（圧縮なし）")
+
+                    if compress_output:
+                        zip_buffer = io.BytesIO()
+                        with pyzipper.AESZipFile(zip_buffer, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zipf:
+                            zipf.setpassword(zip_password.encode('utf-8'))
+                            zipf.writestr("reordered.pdf", final_pdf)
+                        zip_buffer.seek(0)
+                        st.download_button(
+                            label="📥 パスワード付きZIPをダウンロード",
+                            data=zip_buffer.getvalue(),
+                            file_name="reordered_pdf.zip",
+                            mime="application/zip"
+                        )
+                    else:
+                        st.download_button(
+                            label="📥 PDFをダウンロード",
+                            data=final_pdf,
+                            file_name="reordered.pdf",
+                            mime="application/pdf"
+                        )
+                except Exception as e:
+                    st.error(f"並び替えエラー: {e}")
+    except Exception as e:
+        st.error(f"ZIP解凍エラー: {e}")
