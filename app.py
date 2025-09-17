@@ -83,14 +83,16 @@ if uploaded_zip and zip_password:
 
                 if "ordered_files" not in st.session_state:
                     st.session_state.ordered_files = pdf_files
-                if "ordered_pages" not in st.session_state:
-                    st.session_state.ordered_pages = []
-                    for fname in st.session_state.ordered_files:
-                        st.session_state.ordered_pages.extend(file_pages[fname])
 
                 st.subheader("📁 ファイル順の並べ替え")
                 sorted_files = sort_items(st.session_state.ordered_files)
                 st.session_state.ordered_files = sorted_files
+
+                # ファイル順に従ってページ順を再構築
+                ordered_pages = []
+                for fname in st.session_state.ordered_files:
+                    ordered_pages.extend(file_pages[fname])
+                st.session_state.ordered_pages = ordered_pages
 
                 st.subheader("📄 ページ操作（ファイルごとに折りたたみ）")
                 for fname in st.session_state.ordered_files:
@@ -166,6 +168,4 @@ if uploaded_zip and zip_password:
                                 mime="application/pdf"
                             )
                     except Exception as e:
-                        st.error(f"PDF生成エラー: {e}")
-    except Exception as e:
-        st.error(f"ZIP解凍エラー: {e}")
+                        st.error(f"PDF生成
