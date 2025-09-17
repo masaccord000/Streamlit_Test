@@ -1,4 +1,6 @@
 streamlit
-paramiko
-pandas
-openpyxl
+PyPDF2
+pyzipper
+pdf2image
+Pillow
+streamlit-sortable
