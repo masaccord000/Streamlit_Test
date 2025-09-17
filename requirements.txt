@@ -4,4 +4,3 @@ pyzipper
 pdf2image
 Pillow
 streamlit-sortables
-
