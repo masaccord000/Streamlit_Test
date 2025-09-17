@@ -104,24 +104,23 @@ if uploaded_zip and zip_password:
                             with col2:
                                 if st.button("↑", key=f"up_{label}") and i > 0:
                                     pages[i], pages[i-1] = pages[i-1], pages[i]
-                                    # 再構築
                                     st.session_state.ordered_pages = [
                                         p for f in st.session_state.ordered_files
-                                        for p in ([p for p in st.session_state.ordered_pages if p[0].startswith(f)] if f != fname else pages)
+                                        for p in (pages if f == fname else [p for p in st.session_state.ordered_pages if p[0].startswith(f)])
                                     ]
                                     st.rerun()
                                 if st.button("↓", key=f"down_{label}") and i < len(pages)-1:
                                     pages[i], pages[i+1] = pages[i+1], pages[i]
                                     st.session_state.ordered_pages = [
                                         p for f in st.session_state.ordered_files
-                                        for p in ([p for p in st.session_state.ordered_pages if p[0].startswith(f)] if f != fname else pages)
+                                        for p in (pages if f == fname else [p for p in st.session_state.ordered_pages if p[0].startswith(f)])
                                     ]
                                     st.rerun()
                                 if st.button("❌ 削除", key=f"del_{label}"):
                                     pages.pop(i)
                                     st.session_state.ordered_pages = [
                                         p for f in st.session_state.ordered_files
-                                        for p in ([p for p in st.session_state.ordered_pages if p[0].startswith(f)] if f != fname else pages)
+                                        for p in (pages if f == fname else [p for p in st.session_state.ordered_pages if p[0].startswith(f)])
                                     ]
                                     st.rerun()
 
@@ -168,6 +167,3 @@ if uploaded_zip and zip_password:
                                 mime="application/pdf"
                             )
                     except Exception as e:
-                        st.error(f"PDF生成エラー: {e}")
-    except Exception as e:
-        st.error(f"ZIP解凍エラー
