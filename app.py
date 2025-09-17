@@ -90,4 +90,4 @@ if uploaded_zip and zip_password:
                                 compressed = maybe_compress_pdf(temp_pdf.getvalue(), compression_quality)
                                 size_kb = len(compressed) / 1024
 
-                                if size_kb > target
+                                if size_kb > target_kb
