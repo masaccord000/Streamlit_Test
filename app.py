@@ -88,7 +88,7 @@ if uploaded_zip and zip_password:
                 sorted_files = sort_items(st.session_state.ordered_files)
                 st.session_state.ordered_files = sorted_files
 
-                # ファイル順に従ってページ順を再構築
+                # 🔁 ページ順をファイル順に従って再構築
                 ordered_pages = []
                 for fname in st.session_state.ordered_files:
                     ordered_pages.extend(file_pages[fname])
@@ -168,4 +168,6 @@ if uploaded_zip and zip_password:
                                 mime="application/pdf"
                             )
                     except Exception as e:
-                        st.error(f"PDF生成
+                        st.error(f"PDF生成エラー: {e}")
+    except Exception as e:
+        st.error(f"ZIP解凍エラー: {e}")
