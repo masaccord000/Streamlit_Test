@@ -8,8 +8,8 @@ import tempfile
 import subprocess
 import os
 
-st.set_page_config(page_title="PDF結合・圧縮・並び替え", layout="wide")
-st.title("📚 PDFサムネイル結合・並び替え・圧縮ツール")
+st.set_page_config(page_title="PDF並べ替えツール", layout="wide")
+st.title("📚 PDFページ並べ替え・圧縮・ZIP出力")
 
 uploaded_zip = st.file_uploader("🔐 暗号化ZIPファイルをアップロード", type="zip")
 zip_password = st.text_input("ZIPパスワードを入力", type="password")
@@ -19,6 +19,15 @@ compression_quality = st.selectbox(
     ["/screen", "/ebook", "/printer", "/prepress", "圧縮しない"],
     index=1
 )
+
+compression_info = {
+    "/screen": "🌐 Web表示向け（72dpi・高圧縮）",
+    "/ebook": "📱 電子書籍向け（150dpi・中圧縮）",
+    "/printer": "🖨️ 印刷向け（300dpi・低圧縮）",
+    "/prepress": "📰 商業印刷向け（高画質・最低圧縮）",
+    "圧縮しない": "📄 圧縮なし（元の画質・サイズ）"
+}
+st.info(f"選択中の圧縮設定：{compression_info[compression_quality]}")
 
 compress_output = st.checkbox("📦 ZIPで出力（パスワード付き）")
 
@@ -60,11 +69,8 @@ if uploaded_zip and zip_password:
             if not pdf_files:
                 st.error("ZIP内にPDFファイルが見つかりません。")
             else:
-                st.subheader("📁 PDFファイルの並び順を指定")
-                ordered_files = sort_items(pdf_files)
-
                 page_pool = []  # [(label, page_obj, image)]
-                for fname in ordered_files:
+                for fname in pdf_files:
                     with zf.open(fname) as pdf_file:
                         pdf_bytes = pdf_file.read()
                         reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -74,63 +80,84 @@ if uploaded_zip and zip_password:
                             thumbnail = images[i]
                             page_pool.append((label, page, thumbnail))
 
-                st.subheader("🧹 結合対象ページを選択（サムネイル付き）")
-                selected_labels = []
-                for label, _, img in page_pool:
-                    col1, col2 = st.columns([1, 4])
+                # 初期化
+                if "ordered_pages" not in st.session_state:
+                    st.session_state.ordered_pages = page_pool
+
+                st.subheader("📄 ページ順の並べ替え（↑↓ボタン）")
+                new_order = st.session_state.ordered_pages.copy()
+
+                for i, (label, page, img) in enumerate(st.session_state.ordered_pages):
+                    col1, col2, col3 = st.columns([4, 1, 1])
                     with col1:
-                        include = st.checkbox(label, value=True, key=label)
+                        st.image(img, caption=label, use_container_width=True)
                     with col2:
-                        st.image(img, caption=label, use_column_width=True)
-                    if include:
-                        selected_labels.append(label)
+                        if st.button("↑", key=f"up_{i}") and i > 0:
+                            new_order[i], new_order[i-1] = new_order[i-1], new_order[i]
+                            st.session_state.ordered_pages = new_order
+                            st.experimental_rerun()
+                    with col3:
+                        if st.button("↓", key=f"down_{i}") and i < len(new_order)-1:
+                            new_order[i], new_order[i+1] = new_order[i+1], new_order[i]
+                            st.session_state.ordered_pages = new_order
+                            st.experimental_rerun()
 
-                st.subheader("📄 ページ順の並び替え")
-                ordered_labels = sort_items(selected_labels)
+                st.subheader("🖱️ ページ順のドラッグ並び替え（sort_items）")
+                current_labels = [label for label, _, _ in st.session_state.ordered_pages]
+                sorted_labels = sort_items(current_labels)
 
-                try:
-                    writer = PdfWriter()
-                    for label in ordered_labels:
-                        page = next(p for l, p, _ in page_pool if l == label)
-                        writer.add_page(page)
+                # 並び替え結果を反映
+                new_order = []
+                for label in sorted_labels:
+                    for l, p, img in st.session_state.ordered_pages:
+                        if l == label:
+                            new_order.append((l, p, img))
+                            break
+                st.session_state.ordered_pages = new_order
 
-                    pdf_bytes = io.BytesIO()
-                    writer.write(pdf_bytes)
-                    pdf_bytes.seek(0)
+                if st.button("✅ PDFを生成"):
+                    try:
+                        writer = PdfWriter()
+                        for _, page, _ in st.session_state.ordered_pages:
+                            writer.add_page(page)
 
-                    original_size_kb = len(pdf_bytes.getvalue()) / 1024
+                        pdf_bytes = io.BytesIO()
+                        writer.write(pdf_bytes)
+                        pdf_bytes.seek(0)
 
-                    if compression_quality != "圧縮しない":
-                        compressed_pdf = compress_pdf(pdf_bytes.getvalue(), compression_quality)
-                        final_pdf = compressed_pdf
-                        compressed_size_kb = len(compressed_pdf) / 1024
-                        st.write(f"📊 圧縮前: {original_size_kb:.1f} KB")
-                        st.write(f"📊 圧縮後: {compressed_size_kb:.1f} KB")
-                        st.write(f"📉 削減率: {100 * (1 - compressed_size_kb / original_size_kb):.1f}%")
-                    else:
-                        final_pdf = pdf_bytes.getvalue()
-                        st.write(f"📄 PDFサイズ: {original_size_kb:.1f} KB（圧縮なし）")
+                        original_size_kb = len(pdf_bytes.getvalue()) / 1024
 
-                    if compress_output:
-                        zip_buffer = io.BytesIO()
-                        with pyzipper.AESZipFile(zip_buffer, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zipf:
-                            zipf.setpassword(zip_password.encode('utf-8'))
-                            zipf.writestr("reordered.pdf", final_pdf)
-                        zip_buffer.seek(0)
-                        st.download_button(
-                            label="📥 パスワード付きZIPをダウンロード",
-                            data=zip_buffer.getvalue(),
-                            file_name="reordered_pdf.zip",
-                            mime="application/zip"
-                        )
-                    else:
-                        st.download_button(
-                            label="📥 PDFをダウンロード",
-                            data=final_pdf,
-                            file_name="reordered.pdf",
-                            mime="application/pdf"
-                        )
-                except Exception as e:
-                    st.error(f"並び替えエラー: {e}")
+                        if compression_quality != "圧縮しない":
+                            compressed_pdf = compress_pdf(pdf_bytes.getvalue(), compression_quality)
+                            final_pdf = compressed_pdf
+                            compressed_size_kb = len(compressed_pdf) / 1024
+                            st.write(f"📊 圧縮前: {original_size_kb:.1f} KB")
+                            st.write(f"📊 圧縮後: {compressed_size_kb:.1f} KB")
+                            st.write(f"📉 削減率: {100 * (1 - compressed_size_kb / original_size_kb):.1f}%")
+                        else:
+                            final_pdf = pdf_bytes.getvalue()
+                            st.write(f"📄 PDFサイズ: {original_size_kb:.1f} KB（圧縮なし）")
+
+                        if compress_output:
+                            zip_buffer = io.BytesIO()
+                            with pyzipper.AESZipFile(zip_buffer, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zipf:
+                                zipf.setpassword(zip_password.encode('utf-8'))
+                                zipf.writestr("reordered.pdf", final_pdf)
+                            zip_buffer.seek(0)
+                            st.download_button(
+                                label="📥 パスワード付きZIPをダウンロード",
+                                data=zip_buffer.getvalue(),
+                                file_name="reordered_pdf.zip",
+                                mime="application/zip"
+                            )
+                        else:
+                            st.download_button(
+                                label="📥 PDFをダウンロード",
+                                data=final_pdf,
+                                file_name="reordered.pdf",
+                                mime="application/pdf"
+                            )
+                    except Exception as e:
+                        st.error(f"PDF生成エラー: {e}")
     except Exception as e:
         st.error(f"ZIP解凍エラー: {e}")
