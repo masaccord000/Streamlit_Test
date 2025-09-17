@@ -9,7 +9,7 @@ import subprocess
 import os
 
 st.set_page_config(page_title="PDF並べ替えツール", layout="wide")
-st.title("📚 PDFページ並べ替え・圧縮・ZIP出力")
+st.title("📚 PDFファイル・ページ並べ替え・圧縮・ZIP出力")
 
 uploaded_zip = st.file_uploader("🔐 暗号化ZIPファイルをアップロード", type="zip")
 zip_password = st.text_input("ZIPパスワードを入力", type="password")
@@ -69,52 +69,61 @@ if uploaded_zip and zip_password:
             if not pdf_files:
                 st.error("ZIP内にPDFファイルが見つかりません。")
             else:
-                page_pool = []  # [(label, page_obj, image)]
+                file_pages = {}  # {filename: [(label, page_obj, image)]}
                 for fname in pdf_files:
                     with zf.open(fname) as pdf_file:
                         pdf_bytes = pdf_file.read()
                         reader = PdfReader(io.BytesIO(pdf_bytes))
                         images = convert_from_bytes(pdf_bytes, dpi=100)
+                        file_pages[fname] = []
                         for i, page in enumerate(reader.pages):
                             label = f"{fname} - Page {i+1}"
                             thumbnail = images[i]
-                            page_pool.append((label, page, thumbnail))
+                            file_pages[fname].append((label, page, thumbnail))
 
+                if "ordered_files" not in st.session_state:
+                    st.session_state.ordered_files = pdf_files
                 if "ordered_pages" not in st.session_state:
-                    st.session_state.ordered_pages = page_pool
+                    st.session_state.ordered_pages = []
+                    for fname in st.session_state.ordered_files:
+                        st.session_state.ordered_pages.extend(file_pages[fname])
 
-                st.subheader("📄 ページ順の並べ替え（↑↓❌ボタン）")
-                new_order = st.session_state.ordered_pages.copy()
+                st.subheader("📁 ファイル順の並べ替え")
+                sorted_files = sort_items(st.session_state.ordered_files)
+                st.session_state.ordered_files = sorted_files
 
-                for i, (label, page, img) in enumerate(st.session_state.ordered_pages):
-                    col1, col2 = st.columns([5, 1])
-                    with col1:
-                        st.image(img, caption=label, use_container_width=True)
-                    with col2:
-                        if st.button("↑", key=f"up_{i}") and i > 0:
-                            new_order[i], new_order[i-1] = new_order[i-1], new_order[i]
-                            st.session_state.ordered_pages = new_order
-                            st.rerun()
-                        if st.button("↓", key=f"down_{i}") and i < len(new_order)-1:
-                            new_order[i], new_order[i+1] = new_order[i+1], new_order[i]
-                            st.session_state.ordered_pages = new_order
-                            st.rerun()
-                        if st.button("❌ 削除", key=f"del_{i}"):
-                            new_order.pop(i)
-                            st.session_state.ordered_pages = new_order
-                            st.rerun()
-
-                st.subheader("🖱️ ページ順のドラッグ並び替え（sort_items）")
-                current_labels = [label for label, _, _ in st.session_state.ordered_pages]
-                sorted_labels = sort_items(current_labels)
-
-                new_order = []
-                for label in sorted_labels:
-                    for l, p, img in st.session_state.ordered_pages:
-                        if l == label:
-                            new_order.append((l, p, img))
-                            break
-                st.session_state.ordered_pages = new_order
+                st.subheader("📄 ページ操作（ファイルごとに折りたたみ）")
+                new_ordered_pages = []
+                for fname in st.session_state.ordered_files:
+                    with st.expander(f"📄 {fname}", expanded=True):
+                        pages = [p for p in st.session_state.ordered_pages if p[0].startswith(fname)]
+                        for i, (label, page, img) in enumerate(pages):
+                            col1, col2 = st.columns([5, 1])
+                            with col1:
+                                st.image(img, caption=label, use_container_width=True)
+                            with col2:
+                                if st.button("↑", key=f"up_{label}") and i > 0:
+                                    pages[i], pages[i-1] = pages[i-1], pages[i]
+                                    # 再構築
+                                    st.session_state.ordered_pages = [
+                                        p for f in st.session_state.ordered_files
+                                        for p in ([p for p in st.session_state.ordered_pages if p[0].startswith(f)] if f != fname else pages)
+                                    ]
+                                    st.rerun()
+                                if st.button("↓", key=f"down_{label}") and i < len(pages)-1:
+                                    pages[i], pages[i+1] = pages[i+1], pages[i]
+                                    st.session_state.ordered_pages = [
+                                        p for f in st.session_state.ordered_files
+                                        for p in ([p for p in st.session_state.ordered_pages if p[0].startswith(f)] if f != fname else pages)
+                                    ]
+                                    st.rerun()
+                                if st.button("❌ 削除", key=f"del_{label}"):
+                                    pages.pop(i)
+                                    st.session_state.ordered_pages = [
+                                        p for f in st.session_state.ordered_files
+                                        for p in ([p for p in st.session_state.ordered_pages if p[0].startswith(f)] if f != fname else pages)
+                                    ]
+                                    st.rerun()
 
                 if st.button("✅ PDFを生成"):
                     try:
@@ -161,4 +170,4 @@ if uploaded_zip and zip_password:
                     except Exception as e:
                         st.error(f"PDF生成エラー: {e}")
     except Exception as e:
-        st.error(f"ZIP解凍エラー: {e}")
+        st.error(f"ZIP解凍エラー
