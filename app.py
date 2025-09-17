@@ -80,7 +80,6 @@ if uploaded_zip and zip_password:
                             thumbnail = images[i]
                             page_pool.append((label, page, thumbnail))
 
-                # 初期化
                 if "ordered_pages" not in st.session_state:
                     st.session_state.ordered_pages = page_pool
 
@@ -95,18 +94,17 @@ if uploaded_zip and zip_password:
                         if st.button("↑", key=f"up_{i}") and i > 0:
                             new_order[i], new_order[i-1] = new_order[i-1], new_order[i]
                             st.session_state.ordered_pages = new_order
-                            st.experimental_rerun()
+                            st.rerun()
                     with col3:
                         if st.button("↓", key=f"down_{i}") and i < len(new_order)-1:
                             new_order[i], new_order[i+1] = new_order[i+1], new_order[i]
                             st.session_state.ordered_pages = new_order
-                            st.experimental_rerun()
+                            st.rerun()
 
                 st.subheader("🖱️ ページ順のドラッグ並び替え（sort_items）")
                 current_labels = [label for label, _, _ in st.session_state.ordered_pages]
                 sorted_labels = sort_items(current_labels)
 
-                # 並び替え結果を反映
                 new_order = []
                 for label in sorted_labels:
                     for l, p, img in st.session_state.ordered_pages:
