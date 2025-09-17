@@ -83,11 +83,11 @@ if uploaded_zip and zip_password:
                 if "ordered_pages" not in st.session_state:
                     st.session_state.ordered_pages = page_pool
 
-                st.subheader("📄 ページ順の並べ替え（↑↓ボタン）")
+                st.subheader("📄 ページ順の並べ替え（↑↓❌ボタン）")
                 new_order = st.session_state.ordered_pages.copy()
 
                 for i, (label, page, img) in enumerate(st.session_state.ordered_pages):
-                    col1, col2, col3 = st.columns([4, 1, 1])
+                    col1, col2 = st.columns([5, 1])
                     with col1:
                         st.image(img, caption=label, use_container_width=True)
                     with col2:
@@ -95,9 +95,12 @@ if uploaded_zip and zip_password:
                             new_order[i], new_order[i-1] = new_order[i-1], new_order[i]
                             st.session_state.ordered_pages = new_order
                             st.rerun()
-                    with col3:
                         if st.button("↓", key=f"down_{i}") and i < len(new_order)-1:
                             new_order[i], new_order[i+1] = new_order[i+1], new_order[i]
+                            st.session_state.ordered_pages = new_order
+                            st.rerun()
+                        if st.button("❌ 削除", key=f"del_{i}"):
+                            new_order.pop(i)
                             st.session_state.ordered_pages = new_order
                             st.rerun()
 
