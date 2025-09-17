@@ -2,15 +2,14 @@ import streamlit as st
 import pyzipper
 from PyPDF2 import PdfReader, PdfWriter
 from pdf2image import convert_from_bytes
-from streamlit_sortable import sortable
-import zipfile
+from streamlit_sortables import sort_items
 import io
-import subprocess
 import tempfile
+import subprocess
 import os
 
 st.set_page_config(page_title="PDF結合・圧縮・並び替え", layout="wide")
-st.title("📚 サムネイル付きPDF結合・並び替え・圧縮ツール")
+st.title("📚 PDFサムネイル結合・並び替え・圧縮ツール")
 
 uploaded_zip = st.file_uploader("🔐 暗号化ZIPファイルをアップロード", type="zip")
 zip_password = st.text_input("ZIPパスワードを入力", type="password")
@@ -23,7 +22,7 @@ compression_quality = st.selectbox(
 
 compress_output = st.checkbox("📦 ZIPで出力（パスワード付き）")
 
-def compress_pdf_with_ghostscript(input_bytes, quality="/ebook"):
+def compress_pdf(input_bytes, quality="/ebook"):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as input_file:
         input_file.write(input_bytes)
         input_path = input_file.name
@@ -56,20 +55,20 @@ if uploaded_zip and zip_password:
     try:
         with pyzipper.AESZipFile(uploaded_zip, 'r') as zf:
             zf.pwd = zip_password.encode('utf-8')
-            pdf_files = [name for name in zf.namelist() if name.lower().endswith('.pdf')]
+            pdf_files = [f for f in zf.namelist() if f.lower().endswith('.pdf')]
 
             if not pdf_files:
                 st.error("ZIP内にPDFファイルが見つかりません。")
             else:
                 st.subheader("📁 PDFファイルの並び順を指定")
-                ordered_files = sortable("ファイル順", pdf_files)
+                ordered_files = sort_items(pdf_files)
 
                 page_pool = []  # [(label, page_obj, image)]
                 for fname in ordered_files:
                     with zf.open(fname) as pdf_file:
                         pdf_bytes = pdf_file.read()
                         reader = PdfReader(io.BytesIO(pdf_bytes))
-                        images = convert_from_bytes(pdf_bytes, dpi=100, fmt='PNG')
+                        images = convert_from_bytes(pdf_bytes, dpi=100)
                         for i, page in enumerate(reader.pages):
                             label = f"{fname} - Page {i+1}"
                             thumbnail = images[i]
@@ -87,22 +86,22 @@ if uploaded_zip and zip_password:
                         selected_labels.append(label)
 
                 st.subheader("📄 ページ順の並び替え")
-                ordered_labels = sortable("ページ順", selected_labels)
+                ordered_labels = sort_items(selected_labels)
 
                 try:
-                    reordered_writer = PdfWriter()
+                    writer = PdfWriter()
                     for label in ordered_labels:
                         page = next(p for l, p, _ in page_pool if l == label)
-                        reordered_writer.add_page(page)
+                        writer.add_page(page)
 
                     pdf_bytes = io.BytesIO()
-                    reordered_writer.write(pdf_bytes)
+                    writer.write(pdf_bytes)
                     pdf_bytes.seek(0)
 
                     original_size_kb = len(pdf_bytes.getvalue()) / 1024
 
                     if compression_quality != "圧縮しない":
-                        compressed_pdf = compress_pdf_with_ghostscript(pdf_bytes.getvalue(), compression_quality)
+                        compressed_pdf = compress_pdf(pdf_bytes.getvalue(), compression_quality)
                         final_pdf = compressed_pdf
                         compressed_size_kb = len(compressed_pdf) / 1024
                         st.write(f"📊 圧縮前: {original_size_kb:.1f} KB")
