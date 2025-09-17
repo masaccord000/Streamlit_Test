@@ -68,38 +68,43 @@ if uploaded_zip and zip_password:
                         with zf.open(fname) as pdf_file:
                             reader = PdfReader(pdf_file)
                             part_index = 1
-                            writer = PdfWriter()
+                            temp_pages = []
 
                             for i, page in enumerate(reader.pages):
-                                writer.add_page(page)
-                                temp_pdf = io.BytesIO()
-                                writer.write(temp_pdf)
-                                temp_pdf.seek(0)
+                                temp_pages.append(page)
+                                temp_writer = PdfWriter()
+                                for p in temp_pages:
+                                    temp_writer.add_page(p)
 
+                                temp_pdf = io.BytesIO()
+                                temp_writer.write(temp_pdf)
+                                temp_pdf.seek(0)
                                 compressed = compress_pdf(temp_pdf.getvalue(), compression_quality)
                                 size_kb = len(compressed) / 1024
 
                                 if size_kb > target_kb:
-                                    # 前の状態で保存
-                                    writer.remove_page(-1)
+                                    # 最後のページを除いて保存
+                                    temp_writer = PdfWriter()
+                                    for p in temp_pages[:-1]:
+                                        temp_writer.add_page(p)
                                     temp_pdf = io.BytesIO()
-                                    writer.write(temp_pdf)
+                                    temp_writer.write(temp_pdf)
                                     temp_pdf.seek(0)
                                     compressed = compress_pdf(temp_pdf.getvalue(), compression_quality)
                                     size_kb = len(compressed) / 1024
-
                                     out_name = f"{fname.replace('.pdf','')}_part{part_index}_{int(size_kb)}KB.pdf"
                                     zipf.writestr(out_name, compressed)
-                                    part_index += 1
 
-                                    # 新しいWriterで再開
-                                    writer = PdfWriter()
-                                    writer.add_page(page)
+                                    part_index += 1
+                                    temp_pages = [page]  # 現在のページから再スタート
 
                             # 最後の残りページ
-                            if len(writer.pages) > 0:
+                            if temp_pages:
+                                temp_writer = PdfWriter()
+                                for p in temp_pages:
+                                    temp_writer.add_page(p)
                                 temp_pdf = io.BytesIO()
-                                writer.write(temp_pdf)
+                                temp_writer.write(temp_pdf)
                                 temp_pdf.seek(0)
                                 compressed = compress_pdf(temp_pdf.getvalue(), compression_quality)
                                 size_kb = len(compressed) / 1024
