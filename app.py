@@ -168,4 +168,4 @@ if uploaded_zip and zip_password:
                     except Exception as e:
                         st.error(f"PDF生成エラー: {e}")
     except Exception as e:
-        st.error
+        st.error(f"ZIP解凍エラー: {e}")
